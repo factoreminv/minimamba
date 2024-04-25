@@ -15,7 +15,7 @@ class Mamba(nn.Module):
         self.dt_rank = dt_rank
 
         self.embedding = nn.Embedding(vocab_size, d_model)
-        self.layers = nn.ModuleList([ResidualBlock(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank) for i in range(n_layers)])
+        self.layers = nn.ModuleList([Residual(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank) for i in range(n_layers)])
         self.norm = RMSNorm(d_model)
 
         self.out_head = nn.Linear(d_model, vocab_size, bias=False)
@@ -29,7 +29,7 @@ class Mamba(nn.Module):
 
         return self.lm_head(e)
 
-class ResidualBlock(nn.Module):
+class Residual(nn.Module):
     def __init__(self, d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank):
         super().__init__()
         self.d_model = d_model
