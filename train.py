@@ -5,12 +5,13 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
 import torch.optim as optim
 from datasets import load_dataset
+import torch.nn.functional as F
 
 from mamba import Mamba
 
 # Load tokenizer function
 def load_tokenizer(path):
-    with open(path, 'r') as file:
+    with open(path, 'r', encoding="utf-8") as file:
         data = json.load(file)
     vocab = data['model']['vocab']
     return vocab
@@ -41,6 +42,8 @@ class TranslationDataset(Dataset):
 def collate_fn(batch):
     src_batch = pad_sequence([item['src'] for item in batch], batch_first=True, padding_value=token_to_id_en['[PAD]'])
     trg_batch = pad_sequence([item['trg'] for item in batch], batch_first=True, padding_value=token_to_id_it['[PAD]'])
+    src_batch = F.pad(src_batch, (0,200-len(src_batch[0]),0,0), value=token_to_id_en['[PAD]'])
+    trg_batch = F.pad(trg_batch, (0,200-len(trg_batch[0]),0,0), value=token_to_id_en['[PAD]'])
     return src_batch, trg_batch
 
 # Load English and Italian tokenizers
@@ -71,15 +74,16 @@ def train(model, data_loader, optimizer, criterion, num_epochs):
         total_loss = 0
         for src, trg in data_loader:
             optimizer.zero_grad()
-            output = model(src)
-            print(f"Output shape: {output.shape}, Target shape: {trg.shape}")  # Debug shapes
-            output = output.reshape(-1, output.shape[-1])  # Flatten output for loss calculation
-            trg = trg.reshape(-1)
-            loss = criterion(output, trg)
+            output = model(src)  # output shape might be [batch_size, seq_len, vocab_size]
+            output_flat = output.reshape(-1, output.shape[-1])
+            trg_flat = trg.reshape(-1)
+            loss = criterion(output_flat, trg_flat)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
+
         print(f"Epoch {epoch}, Loss: {total_loss / len(data_loader)}")
+
 
 # Train the model
 num_epochs = 10
