@@ -42,9 +42,14 @@ class TranslationDataset(Dataset):
 def collate_fn(batch):
     src_batch = pad_sequence([item['src'] for item in batch], batch_first=True, padding_value=token_to_id_en['[PAD]'])
     trg_batch = pad_sequence([item['trg'] for item in batch], batch_first=True, padding_value=token_to_id_it['[PAD]'])
-    src_batch = F.pad(src_batch, (0,200-len(src_batch[0]),0,0), value=token_to_id_en['[PAD]'])
-    trg_batch = F.pad(trg_batch, (0,200-len(trg_batch[0]),0,0), value=token_to_id_en['[PAD]'])
-    return src_batch, trg_batch
+
+    max_seq_len = max(len(src_batch[0]), len(trg_batch[0]))
+
+    src_batch = F.pad(src_batch, (0,max_seq_len-len(src_batch[0]),0,0), value=token_to_id_en['[PAD]'])
+    trg_batch = F.pad(trg_batch, (0,max_seq_len-len(trg_batch[0]),0,0), value=token_to_id_en['[PAD]'])
+
+    print(len(src_batch[0]), len(trg_batch[0]))
+    return src_batch.to(device), trg_batch.to(device)
 
 # Load English and Italian tokenizers
 tokenizer_en_path = 'tokenizer_en.json'
@@ -60,9 +65,11 @@ dataset = dataset.map(lambda examples: {'en': examples['translation']['en'], 'it
 train_dataset = TranslationDataset(dataset['train'], token_to_id_en, token_to_id_it)
 train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Model definition (assuming Mamba and its sub-components are defined elsewhere in your setup)
 model = Mamba(512, 6, len(token_to_id_it), 128, 3, 2, 10)
-
+model.to(device)
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss(ignore_index=token_to_id_it['[PAD]'])
 optimizer = optim.Adam(model.parameters())
@@ -73,8 +80,9 @@ def train(model, data_loader, optimizer, criterion, num_epochs):
     for epoch in range(num_epochs):
         total_loss = 0
         for src, trg in data_loader:
+            src, trg = src.to(device), trg.to(device)
             optimizer.zero_grad()
-            output = model(src)  # output shape might be [batch_size, seq_len, vocab_size]
+            output = model(src)
             output_flat = output.reshape(-1, output.shape[-1])
             trg_flat = trg.reshape(-1)
             loss = criterion(output_flat, trg_flat)
@@ -86,5 +94,5 @@ def train(model, data_loader, optimizer, criterion, num_epochs):
 
 
 # Train the model
-num_epochs = 10
+num_epochs = 20
 train(model, train_loader, optimizer, criterion, num_epochs)
