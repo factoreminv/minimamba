@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import einops
+#import mlx.nn as nn
 
 class Mamba(nn.Module):
     def __init__(self, d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank):
@@ -15,7 +16,7 @@ class Mamba(nn.Module):
         self.dt_rank = dt_rank
 
         self.embedding = nn.Embedding(vocab_size, d_model)
-        self.layers = nn.ModuleList([Residual(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank) for i in range(n_layers)])
+        self.layers = list([ResidualBlock(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank) for _ in range(n_layers)])
         self.norm = RMSNorm(d_model)
 
         self.out_head = nn.Linear(d_model, vocab_size, bias=False)
@@ -26,10 +27,9 @@ class Mamba(nn.Module):
         for l in self.layers:
             e = l(e)
         e = self.norm(e)
+        return self.out_head(e)
 
-        return self.lm_head(e)
-
-class Residual(nn.Module):
+class ResidualBlock(nn.Module):
     def __init__(self, d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank):
         super().__init__()
         self.d_model = d_model
@@ -61,15 +61,14 @@ class MambaBlock(nn.Module):
         self.state_x = nn.Linear(d_model, d_model*expand)
 
         self.conv = nn.Conv1d(
-            in_channels=d_model,
-            out_channels=d_model,
+            in_channels=d_model*expand,
+            out_channels=d_model*expand,
             bias=False,
             kernel_size=d_conv,
-            groups=d_model,
             padding=d_conv - 1,
         )
 
-        self.x_to_dt = nn.Linear(d_model, dt_rank)
+        self.x_to_dt = nn.Linear(d_model*expand, dt_rank)
         self.x_to_B = nn.Linear(d_model*expand, d_state)
         self.x_to_C = nn.Linear(d_model*expand, d_state)
 
@@ -87,7 +86,7 @@ class MambaBlock(nn.Module):
         x = self.state_x(x)
 
         x = einops.rearrange(x, 'b l d_in -> b d_in l')
-        x = self.conv1d(x)[:, :, :l]
+        x = self.conv(x)[:, :, :l]
         x = einops.rearrange(x, 'b d_in l -> b l d_in')
 
         x = F.silu(x)
@@ -101,7 +100,6 @@ class MambaBlock(nn.Module):
 
         A = -torch.exp(self.A_log.float())
         D = self.D.float()
-
         delta = F.softplus(self.dt_proj(self.x_to_dt(x)))
         B = self.x_to_B(x)
         C = self.x_to_C(x)
@@ -128,9 +126,7 @@ class MambaBlock(nn.Module):
         return y + u * D
 
 class RMSNorm(nn.Module):
-    def __init__(self,
-                 d_model: int,
-                 eps: float = 1e-5):
+    def __init__(self, d_model, eps = 1e-5):
         super().__init__()
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(d_model))
@@ -140,3 +136,7 @@ class RMSNorm(nn.Module):
         output = x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
 
         return output
+
+if __name__ == "__main__":
+    x=1
+    x=x
