@@ -9,6 +9,9 @@ import torch.nn.functional as F
 
 from mamba import Mamba
 
+from tqdm import tqdm
+import time
+
 # Load tokenizer function
 def load_tokenizer(path):
     with open(path, 'r', encoding="utf-8") as file:
@@ -48,7 +51,7 @@ def collate_fn(batch):
     src_batch = F.pad(src_batch, (0,max_seq_len-len(src_batch[0]),0,0), value=token_to_id_en['[PAD]'])
     trg_batch = F.pad(trg_batch, (0,max_seq_len-len(trg_batch[0]),0,0), value=token_to_id_en['[PAD]'])
 
-    print(len(src_batch[0]), len(trg_batch[0]))
+    # print(len(src_batch[0]), len(trg_batch[0]))
     return src_batch.to(device), trg_batch.to(device)
 
 # Load English and Italian tokenizers
@@ -63,12 +66,12 @@ dataset = dataset.map(lambda examples: {'en': examples['translation']['en'], 'it
 
 # Create the translation dataset
 train_dataset = TranslationDataset(dataset['train'], token_to_id_en, token_to_id_it)
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, collate_fn=collate_fn)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Model definition (assuming Mamba and its sub-components are defined elsewhere in your setup)
-model = Mamba(512, 6, len(token_to_id_it), 128, 3, 2, 10)
+model = Mamba(128, 6, len(token_to_id_it), 32, 3, 2, 5)
 model.to(device)
 # Loss and optimizer
 criterion = nn.CrossEntropyLoss(ignore_index=token_to_id_it['[PAD]'])
@@ -77,22 +80,25 @@ optimizer = optim.Adam(model.parameters())
 # Training loop
 def train(model, data_loader, optimizer, criterion, num_epochs):
     model.train()
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         total_loss = 0
         for src, trg in data_loader:
-            src, trg = src.to(device), trg.to(device)
             optimizer.zero_grad()
+            start = time.time()
             output = model(src)
+            print("fp",time.time() - start)
+            start = time.time()
             output_flat = output.reshape(-1, output.shape[-1])
             trg_flat = trg.reshape(-1)
             loss = criterion(output_flat, trg_flat)
             loss.backward()
             optimizer.step()
+            print(time.time() - start)
             total_loss += loss.item()
 
         print(f"Epoch {epoch}, Loss: {total_loss / len(data_loader)}")
 
 
 # Train the model
-num_epochs = 20
+num_epochs = 10
 train(model, train_loader, optimizer, criterion, num_epochs)
