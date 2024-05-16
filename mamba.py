@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import einops
 #import mlx.nn as nn
 
+
+DEVICE = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 class Mamba(nn.Module):
     def __init__(self, d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank):
         super().__init__()
@@ -15,11 +17,11 @@ class Mamba(nn.Module):
         self.expand = expand
         self.dt_rank = dt_rank
 
-        self.embedding = nn.Embedding(vocab_size, d_model)
-        self.layers = list([ResidualBlock(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank) for _ in range(n_layers)])
+        self.embedding = nn.Embedding(vocab_size, d_model).to(DEVICE)
+        self.layers = list([ResidualBlock(d_model, n_layers, vocab_size, d_state, d_conv, expand, dt_rank).to(DEVICE) for _ in range(n_layers)])
         self.norm = RMSNorm(d_model)
 
-        self.out_head = nn.Linear(d_model, vocab_size, bias=False)
+        self.out_head = nn.Linear(d_model, vocab_size, bias=False).to(DEVICE)
         self.out_head.weight = self.embedding.weight
 
     def forward(self, input_sequence_ids):
